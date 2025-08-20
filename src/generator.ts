@@ -185,7 +185,6 @@ export function buildCallWrapperFile(
   ];
 
   for (const importPath of sortedImports) {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const importName = imports.get(importPath)!;
 
     stmts.push(
