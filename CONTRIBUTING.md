@@ -31,7 +31,7 @@ for all involved. The community looks forward to your contributions. 🎉
 ## Code of Conduct
 
 This project and everyone participating in it is governed by the
-[moleculer-call-wrapper Code of Conduct](https://github.com/treatwell/moleculer-call-wrapper/blob//CODE_OF_CONDUCT.md).
+[moleculer-call-wrapper Code of Conduct](https://github.com/treatwell/moleculer-call-wrapper/blob/CODE_OF_CONDUCT.md).
 By participating, you are expected to uphold this code. Please report unacceptable behavior
 to us.
 
