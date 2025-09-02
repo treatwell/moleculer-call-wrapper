@@ -133,6 +133,8 @@ Install `moleculer-call-wrapper` with your package manager:
   yarn add -D @treatwell/moleculer-call-wrapper
 ```
 
+> This package has a peerDependency to `typescript` >= 5.8. You need to have it declared in your dev dependencies.
+
 ## Usage
 
 To generate the wrapper file, you need to call the `createWrapperCall` function exported by the package and provide:
