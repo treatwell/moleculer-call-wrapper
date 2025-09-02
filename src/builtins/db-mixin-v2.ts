@@ -40,7 +40,7 @@ export function injectDatabaseMixinV2Builtins(
 
   const importName = addDepToImports(
     context.imports,
-    '@treatwell/moleculer-essentials',
+    '@treatwell/moleculer-essentials/mixins/database',
   );
 
   for (const action of dbActions) {
