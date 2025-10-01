@@ -40,7 +40,7 @@
     "eslint": "^9.34.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
-    "jiti": "^2.5.1",
+    "jiti": "^2.6.1",
     "moleculer": "^0.14.33",
     "pkgroll": "^2.15.3",
     "prettier": "^3.6.2",
