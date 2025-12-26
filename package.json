@@ -34,19 +34,19 @@
     "typescript": "^5.8.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.36.0",
-    "@tsconfig/node-lts": "^22.0.2",
-    "@types/node": "^24.6.1",
-    "eslint": "^9.36.0",
+    "@eslint/js": "^9.39.2",
+    "@tsconfig/node-lts": "^24.0.0",
+    "@types/node": "^24.10.4",
+    "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.4",
     "jiti": "^2.6.1",
     "moleculer": "^0.14.35",
-    "pkgroll": "^2.15.4",
-    "prettier": "^3.6.2",
-    "semantic-release": "^24.2.9",
+    "pkgroll": "^2.21.4",
+    "prettier": "^3.7.4",
+    "semantic-release": "^25.0.2",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.45.0"
+    "typescript-eslint": "^8.50.1"
   },
   "files": [
     "dist"
@@ -54,5 +54,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "packageManager": "yarn@4.9.2"
+  "packageManager": "yarn@4.12.0"
 }
