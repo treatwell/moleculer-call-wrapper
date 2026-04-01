@@ -30,8 +30,8 @@
     "ts-clone-node": "^4.0.0"
   },
   "peerDependencies": {
-    "moleculer": "^0.14.33",
-    "typescript": "^5.8.0"
+    "moleculer": "^0.14.33 || ^0.15.0",
+    "typescript": "^5.8.0 || ^6.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1270,8 +1270,8 @@ __metadata:
     typescript: "npm:~5.9.3"
     typescript-eslint: "npm:^8.57.2"
   peerDependencies:
-    moleculer: ^0.14.33
-    typescript: ^5.8.0
+    moleculer: ^0.14.33 || ^0.15.0
+    typescript: ^5.8.0 || ^6.0.2
   languageName: unknown
   linkType: soft
 
