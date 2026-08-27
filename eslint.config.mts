@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 import prettier from 'eslint-plugin-prettier/recommended';
 
 export default tseslint.config(
-  { ignores: ['dist/', '.pnp.*', '.yarn'] },
+  { ignores: ['dist/', '.pnp.*', '.yarn', 'example'] },
   eslint.configs.recommended,
   tseslint.configs.recommended,
   prettier,

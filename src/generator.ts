@@ -5,8 +5,6 @@ import {
   NewLineKind,
   NodeFlags,
   SyntaxKind,
-  type Block,
-  type FunctionDeclaration,
   type ParameterDeclaration,
   type PropertySignature,
   type Statement,
@@ -14,16 +12,19 @@ import {
   type TypeParameterDeclaration,
 } from 'typescript';
 import { cloneNode } from 'ts-clone-node';
-import type { ActionRef, ImportMapping, Imports } from './types.js';
+import { ActionRef, HandlerTypes, ImportMapping, Imports } from './types.js';
 import { importMappingCloneHook, MOLECULER_NAME } from './utils.js';
 
 const ParamsActions = 'Actions';
-const NoParamsActions = 'ActionsU';
+const HelperCallArgs = 'CallArgs';
 
-function createWrapperParameters(
-  action: ActionRef,
-  importMapping: ImportMapping,
-  actionTypeGenericName?: string,
+/**
+ * Return the first 2 parameters of any call function (ctx: Context, action: string) with a narrowed type
+ * based on actionName and actionTypeGenericName
+ */
+function createWrapperParametersFirstPart(
+  actionName: string | undefined,
+  actionTypeGenericName: string | undefined,
 ): ParameterDeclaration[] {
   // 3 cases:
   //  - A generic Name (default)
@@ -35,9 +36,9 @@ function createWrapperParameters(
       factory.createIdentifier(actionTypeGenericName),
       undefined,
     );
-  } else if (action.actionName) {
+  } else if (actionName) {
     actionParamType = factory.createLiteralTypeNode(
-      factory.createStringLiteral(action.actionName, true),
+      factory.createStringLiteral(actionName, true),
     );
   } else {
     actionParamType = factory.createKeywordTypeNode(SyntaxKind.StringKeyword);
@@ -58,12 +59,111 @@ function createWrapperParameters(
       undefined,
       actionParamType,
     ),
+  ];
+}
+
+/**
+ * Create a helper type looking like this:
+ * ```
+ * type CallArgs<N extends keyof Actions> = Actions[N][0] extends undefined
+ *   ? [params?: undefined, meta?: m.CallingOptions]
+ *   : [params: Actions[N][0], meta?: m.CallingOptions];
+ * ```
+ */
+function createCallArgHelperType(): Statement {
+  return factory.createTypeAliasDeclaration(
+    undefined,
+    factory.createIdentifier(HelperCallArgs),
+    [
+      factory.createTypeParameterDeclaration(
+        undefined,
+        factory.createIdentifier('N'),
+        factory.createTypeOperatorNode(
+          SyntaxKind.KeyOfKeyword,
+          factory.createTypeReferenceNode(
+            factory.createIdentifier(ParamsActions),
+            undefined,
+          ),
+        ),
+        undefined,
+      ),
+    ],
+    factory.createConditionalTypeNode(
+      factory.createIndexedAccessTypeNode(
+        factory.createIndexedAccessTypeNode(
+          factory.createTypeReferenceNode(
+            factory.createIdentifier(ParamsActions),
+            undefined,
+          ),
+          factory.createTypeReferenceNode(
+            factory.createIdentifier('N'),
+            undefined,
+          ),
+        ),
+        factory.createLiteralTypeNode(factory.createNumericLiteral('0')),
+      ),
+      factory.createKeywordTypeNode(SyntaxKind.UndefinedKeyword),
+      factory.createTupleTypeNode([
+        factory.createNamedTupleMember(
+          undefined,
+          factory.createIdentifier('params'),
+          factory.createToken(SyntaxKind.QuestionToken),
+          factory.createKeywordTypeNode(SyntaxKind.UndefinedKeyword),
+        ),
+        factory.createNamedTupleMember(
+          undefined,
+          factory.createIdentifier('meta'),
+          factory.createToken(SyntaxKind.QuestionToken),
+          factory.createTypeReferenceNode(`${MOLECULER_NAME}.CallingOptions`),
+        ),
+      ]),
+      factory.createTupleTypeNode([
+        factory.createNamedTupleMember(
+          undefined,
+          factory.createIdentifier('params'),
+          undefined,
+          factory.createIndexedAccessTypeNode(
+            factory.createIndexedAccessTypeNode(
+              factory.createTypeReferenceNode(
+                factory.createIdentifier(ParamsActions),
+                undefined,
+              ),
+              factory.createTypeReferenceNode(
+                factory.createIdentifier('N'),
+                undefined,
+              ),
+            ),
+            factory.createLiteralTypeNode(factory.createNumericLiteral('0')),
+          ),
+        ),
+        factory.createNamedTupleMember(
+          undefined,
+          factory.createIdentifier('meta'),
+          factory.createToken(SyntaxKind.QuestionToken),
+          factory.createTypeReferenceNode(`${MOLECULER_NAME}.CallingOptions`),
+        ),
+      ]),
+    ),
+  );
+}
+
+/**
+ * Create the full list of parameters for simple overloads (with/without generics).
+ */
+function createWrapperParameters(
+  actionName: string | undefined,
+  params: TypeNode | undefined,
+  importMapping: ImportMapping,
+  actionTypeGenericName: string | undefined,
+): ParameterDeclaration[] {
+  return [
+    ...createWrapperParametersFirstPart(actionName, actionTypeGenericName),
     factory.createParameterDeclaration(
       undefined,
       undefined,
       'params',
-      action.params ? undefined : factory.createToken(SyntaxKind.QuestionToken),
-      cloneNode(action.params, {
+      params ? undefined : factory.createToken(SyntaxKind.QuestionToken),
+      cloneNode(params, {
         hook: importMappingCloneHook(importMapping),
       }) || factory.createKeywordTypeNode(SyntaxKind.UndefinedKeyword),
     ),
@@ -77,82 +177,70 @@ function createWrapperParameters(
   ];
 }
 
+/**
+ * Wrap any non Promise return type with a promise.
+ */
 function createWrapperReturnType(
-  action: ActionRef,
+  returnType: TypeNode | undefined,
   importMapping: ImportMapping,
 ): TypeNode {
-  if (!action.returnType) {
+  if (!returnType) {
     return factory.createTypeReferenceNode('Promise', [
       factory.createKeywordTypeNode(SyntaxKind.VoidKeyword),
     ]);
   }
 
   if (
-    isTypeReferenceNode(action.returnType) &&
-    action.returnType.getSourceFile() &&
-    action.returnType.typeName.getText() === 'Promise'
+    isTypeReferenceNode(returnType) &&
+    returnType.getSourceFile() &&
+    returnType.typeName.getText() === 'Promise'
   ) {
-    return cloneNode(action.returnType, {
+    return cloneNode(returnType, {
       hook: importMappingCloneHook(importMapping),
     });
   }
   return factory.createTypeReferenceNode('Promise', [
-    cloneNode(action.returnType, {
-      hook: importMappingCloneHook(importMapping),
-    }),
+    cloneNode(returnType, { hook: importMappingCloneHook(importMapping) }),
   ]);
 }
 
+/**
+ * Unwrap a Promise return type to its underlying type.
+ *
+ * Used for the Actions interface, where we want to store the return type of the action without the Promise wrapper.
+ */
 function createUnwrapReturnType(
-  action: ActionRef,
+  returnType: TypeNode | undefined,
   importMapping: ImportMapping,
 ): TypeNode {
-  if (!action.returnType) {
+  if (!returnType) {
     return factory.createKeywordTypeNode(SyntaxKind.VoidKeyword);
   }
 
   if (
-    isTypeReferenceNode(action.returnType) &&
-    action.returnType.getSourceFile() &&
-    action.returnType.typeName.getText() === 'Promise' &&
-    action.returnType.typeArguments?.length
+    isTypeReferenceNode(returnType) &&
+    returnType.getSourceFile() &&
+    returnType.typeName.getText() === 'Promise' &&
+    returnType.typeArguments?.length
   ) {
-    return cloneNode(action.returnType.typeArguments[0], {
+    return cloneNode(returnType.typeArguments[0], {
       hook: importMappingCloneHook(importMapping),
     });
   }
-  return cloneNode(action.returnType, {
+  return cloneNode(returnType, {
     hook: importMappingCloneHook(importMapping),
   });
 }
 
 function createWrapperTypeParameters(
-  action: ActionRef,
+  typeParameters: HandlerTypes['typeParameters'],
   importMapping: ImportMapping,
 ): TypeParameterDeclaration[] {
-  if (!action.typeParameters) {
+  if (!typeParameters) {
     return [];
   }
-  return action.typeParameters.map(tp =>
+  return typeParameters.map(tp =>
     cloneNode(tp, { hook: importMappingCloneHook(importMapping) }),
-  );
-}
-
-function createWrapperFunctionOverload(
-  action: ActionRef,
-  importMapping: ImportMapping,
-  name: 'call' | 'callT',
-  actionTypeGenericName?: string,
-  block?: Block,
-): FunctionDeclaration {
-  return factory.createFunctionDeclaration(
-    [factory.createModifier(SyntaxKind.ExportKeyword)],
-    undefined,
-    name,
-    createWrapperTypeParameters(action, importMapping),
-    createWrapperParameters(action, importMapping, actionTypeGenericName),
-    createWrapperReturnType(action, importMapping),
-    block,
   );
 }
 
@@ -191,7 +279,7 @@ export function buildCallWrapperFile(
       factory.createImportDeclaration(
         undefined,
         factory.createImportClause(
-          true,
+          SyntaxKind.TypeKeyword,
           undefined,
           factory.createNamespaceImport(factory.createIdentifier(importName)),
         ),
@@ -201,11 +289,10 @@ export function buildCallWrapperFile(
   }
 
   const sortedActions = actions.sort((a, b) =>
-    (a.actionName || '').localeCompare(b.actionName || ''),
+    a.actionName.localeCompare(b.actionName),
   );
 
   const actionsProperties: PropertySignature[] = [];
-  const actionsNoParamsProperties: PropertySignature[] = [];
 
   stmts.push(
     factory.createInterfaceDeclaration(
@@ -217,92 +304,90 @@ export function buildCallWrapperFile(
     ),
   );
 
-  stmts.push(
-    factory.createInterfaceDeclaration(
-      undefined,
-      factory.createIdentifier(NoParamsActions),
-      undefined,
-      undefined,
-      actionsNoParamsProperties,
-    ),
-  );
-
   const callTStmts: Statement[] = [];
   const callStmts: Statement[] = [];
 
   for (const action of sortedActions) {
-    if (action.typeParameters?.length) {
-      const templateTypes = createWrapperTypeParameters(action, importMapping);
+    // If no generics, just add the action params and return type to the interface.
+    if (!action.typeParameters?.length) {
+      actionsProperties.push(
+        factory.createPropertySignature(
+          undefined,
+          factory.createStringLiteral(action.actionName, true),
+          undefined,
+          factory.createTupleTypeNode([
+            cloneNode(action.params, {
+              hook: importMappingCloneHook(importMapping),
+            }) || factory.createKeywordTypeNode(SyntaxKind.UndefinedKeyword),
+            createUnwrapReturnType(action.returnType, importMapping),
+          ]),
+        ),
+      );
+    } else {
+      // Otherwise, add overload signature to callT
+      const templateTypes = createWrapperTypeParameters(
+        action.typeParameters,
+        importMapping,
+      );
+      const actionTemplateName = findUnusedTemplateName(action);
+
       // If action params, we need to wrap params in a conditional type
       // we also need to add a template params
       if (action.params) {
-        const actionTemplateName = findUnusedTemplateName(action);
         action.params = factory.createConditionalTypeNode(
           factory.createTypeReferenceNode(
             factory.createIdentifier(actionTemplateName),
             undefined,
           ),
           factory.createLiteralTypeNode(
-            factory.createStringLiteral(action.actionName || '', true),
+            factory.createStringLiteral(action.actionName, true),
           ),
           action.params,
           factory.createKeywordTypeNode(SyntaxKind.NeverKeyword),
         );
-        action.typeParameters = factory.createNodeArray([
-          ...templateTypes,
-          factory.createTypeParameterDeclaration(
-            undefined,
-            factory.createIdentifier(actionTemplateName),
-            factory.createKeywordTypeNode(SyntaxKind.StringKeyword),
-            factory.createLiteralTypeNode(
-              factory.createStringLiteral(action.actionName || '', true),
-            ),
+      }
+
+      action.typeParameters = factory.createNodeArray([
+        ...templateTypes,
+        factory.createTypeParameterDeclaration(
+          undefined,
+          factory.createIdentifier(actionTemplateName),
+          factory.createKeywordTypeNode(SyntaxKind.StringKeyword),
+          factory.createLiteralTypeNode(
+            factory.createStringLiteral(action.actionName, true),
           ),
-        ]);
-        callTStmts.push(
-          createWrapperFunctionOverload(
-            action,
+        ),
+      ]);
+
+      callTStmts.push(
+        factory.createFunctionDeclaration(
+          [factory.createModifier(SyntaxKind.ExportKeyword)],
+          undefined,
+          'callT',
+          createWrapperTypeParameters(action.typeParameters, importMapping),
+          createWrapperParameters(
+            action.actionName,
+            action.params,
             importMapping,
-            'callT',
             actionTemplateName,
           ),
-        );
-      } else {
-        callStmts.push(
-          createWrapperFunctionOverload(action, importMapping, 'call'),
-        );
-      }
-    } else if (action.params) {
-      actionsProperties.push(
-        factory.createPropertySignature(
+          createWrapperReturnType(action.returnType, importMapping),
           undefined,
-          factory.createStringLiteral(action.actionName || '', true),
-          undefined,
-          factory.createTupleTypeNode([
-            cloneNode(action.params, {
-              hook: importMappingCloneHook(importMapping),
-            }),
-            createUnwrapReturnType(action, importMapping),
-          ]),
-        ),
-      );
-    } else {
-      actionsNoParamsProperties.push(
-        factory.createPropertySignature(
-          undefined,
-          factory.createStringLiteral(action.actionName || '', true),
-          undefined,
-          createUnwrapReturnType(action, importMapping),
         ),
       );
     }
   }
 
-  // First generic overload, for standard actions with params and returnType
+  // Create call function, where we keep a single signature to improve auto-completion by TS language server
   callStmts.push(
-    createWrapperFunctionOverload(
-      {
-        typeParameters: factory.createNodeArray([
+    createCallArgHelperType(),
+    factory.createFunctionDeclaration(
+      [factory.createModifier(SyntaxKind.ExportKeyword)],
+      undefined,
+      'call',
+      // Generic: <N extends keyof Actions>
+      createWrapperTypeParameters(
+        factory.createNodeArray([
           factory.createTypeParameterDeclaration(
             undefined,
             factory.createIdentifier('N'),
@@ -315,16 +400,32 @@ export function buildCallWrapperFile(
             ),
           ),
         ]),
-        params: factory.createIndexedAccessTypeNode(
-          factory.createIndexedAccessTypeNode(
-            factory.createTypeReferenceNode(
-              factory.createIdentifier(ParamsActions),
-            ),
-            factory.createTypeReferenceNode(factory.createIdentifier('N')),
+        importMapping,
+      ),
+      [
+        // Parameters: ctx: m.Context, action: N
+        ...createWrapperParametersFirstPart(undefined, 'N'),
+        // Parameter: ...args: CallArgs<N>
+        factory.createParameterDeclaration(
+          undefined,
+          factory.createToken(SyntaxKind.DotDotDotToken),
+          factory.createIdentifier('args'),
+          undefined,
+          factory.createTypeReferenceNode(
+            factory.createIdentifier(HelperCallArgs),
+            [
+              factory.createTypeReferenceNode(
+                factory.createIdentifier('N'),
+                undefined,
+              ),
+            ],
           ),
-          factory.createLiteralTypeNode(factory.createNumericLiteral('0')),
+          undefined,
         ),
-        returnType: factory.createIndexedAccessTypeNode(
+      ],
+      // Return type: Actions<[N][1]>
+      createWrapperReturnType(
+        factory.createIndexedAccessTypeNode(
           factory.createIndexedAccessTypeNode(
             factory.createTypeReferenceNode(
               factory.createIdentifier(ParamsActions),
@@ -337,108 +438,73 @@ export function buildCallWrapperFile(
           ),
           factory.createLiteralTypeNode(factory.createNumericLiteral('1')),
         ),
-      },
-      importMapping,
-      'call',
-      'N',
+        importMapping,
+      ),
+      factory.createBlock(
+        [
+          factory.createReturnStatement(
+            factory.createCallExpression(
+              factory.createPropertyAccessExpression(
+                factory.createIdentifier('ctx'),
+                factory.createIdentifier('call'),
+              ),
+              undefined,
+              [
+                factory.createIdentifier('action'),
+                factory.createIdentifier('args[0]'),
+                factory.createIdentifier('args[1]'),
+              ],
+            ),
+          ),
+        ],
+        true,
+      ),
     ),
   );
 
-  // Second generic overload, for actions without params
-  callStmts.push(
-    createWrapperFunctionOverload(
-      {
-        typeParameters: factory.createNodeArray([
-          factory.createTypeParameterDeclaration(
-            undefined,
-            factory.createIdentifier('N'),
-            factory.createTypeOperatorNode(
-              SyntaxKind.KeyOfKeyword,
-              factory.createTypeReferenceNode(
-                factory.createIdentifier(NoParamsActions),
-                undefined,
-              ),
-            ),
-          ),
-        ]),
-        returnType: factory.createIndexedAccessTypeNode(
-          factory.createTypeReferenceNode(
-            factory.createIdentifier(NoParamsActions),
-            undefined,
-          ),
-          factory.createTypeReferenceNode(
-            factory.createIdentifier('N'),
-            undefined,
-          ),
+  // Create callT function for generics. Completion will not work as well but should not have too much cases.
+  // We skip it if no generics are used on the project
+  if (callTStmts.length) {
+    callTStmts.push(
+      factory.createFunctionDeclaration(
+        [factory.createModifier(SyntaxKind.ExportKeyword)],
+        undefined,
+        'callT',
+        [],
+        // ctx: m.Context, action: string, params: unknown, meta?: m.CallingOptions
+        createWrapperParameters(
+          undefined,
+          factory.createKeywordTypeNode(SyntaxKind.UnknownKeyword),
+          importMapping,
+          undefined,
         ),
-      },
-      importMapping,
-      'call',
-      'N',
-    ),
-  );
-
-  // Create function base implementations
-  callStmts.push(
-    createWrapperFunctionOverload(
-      {
-        params: factory.createKeywordTypeNode(SyntaxKind.UnknownKeyword),
-        returnType: factory.createKeywordTypeNode(SyntaxKind.UnknownKeyword),
-      },
-      importMapping,
-      'call',
-      undefined,
-      factory.createBlock(
-        [
-          factory.createReturnStatement(
-            factory.createCallExpression(
-              factory.createPropertyAccessExpression(
-                factory.createIdentifier('ctx'),
-                factory.createIdentifier('call'),
+        // Promise<unknown>
+        createWrapperReturnType(
+          factory.createKeywordTypeNode(SyntaxKind.UnknownKeyword),
+          importMapping,
+        ),
+        factory.createBlock(
+          [
+            factory.createReturnStatement(
+              factory.createCallExpression(
+                factory.createPropertyAccessExpression(
+                  factory.createIdentifier('ctx'),
+                  factory.createIdentifier('call'),
+                ),
+                undefined,
+                [
+                  factory.createIdentifier('action'),
+                  factory.createIdentifier('params'),
+                  factory.createIdentifier('meta'),
+                ],
               ),
-              undefined,
-              [
-                factory.createIdentifier('action'),
-                factory.createIdentifier('params'),
-                factory.createIdentifier('meta'),
-              ],
             ),
-          ),
-        ],
-        true,
+          ],
+          true,
+        ),
       ),
-    ),
-  );
-  callTStmts.push(
-    createWrapperFunctionOverload(
-      {
-        params: factory.createKeywordTypeNode(SyntaxKind.UnknownKeyword),
-        returnType: factory.createKeywordTypeNode(SyntaxKind.UnknownKeyword),
-      },
-      importMapping,
-      'callT',
-      undefined,
-      factory.createBlock(
-        [
-          factory.createReturnStatement(
-            factory.createCallExpression(
-              factory.createPropertyAccessExpression(
-                factory.createIdentifier('ctx'),
-                factory.createIdentifier('call'),
-              ),
-              undefined,
-              [
-                factory.createIdentifier('action'),
-                factory.createIdentifier('params'),
-                factory.createIdentifier('meta'),
-              ],
-            ),
-          ),
-        ],
-        true,
-      ),
-    ),
-  );
+    );
+  }
 
   const printer = createPrinter({ newLine: NewLineKind.LineFeed });
   const sourceFile = factory.createSourceFile(
@@ -450,6 +516,7 @@ export function buildCallWrapperFile(
   // Add an empty line between imports and functions.
   res = res
     .replace(/interface Actions/, '\ninterface Actions')
+    .replace(/type CallArgs/, '\ntype CallArgs')
     .replace(/export function call/, '\nexport function call')
     .replace(/export function callT/, '\nexport function callT');
 
