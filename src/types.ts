@@ -14,7 +14,7 @@ export type HandlerTypes = {
 };
 
 export type ActionRef = HandlerTypes & {
-  actionName?: string;
+  actionName: string;
 };
 
 export type Imports = Map<string, string>;
