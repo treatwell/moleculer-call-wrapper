@@ -1,0 +1,39 @@
+/* eslint-disable @typescript-eslint/no-explicit-any,@typescript-eslint/no-unused-vars */
+import type * as m from 'moleculer';
+
+interface Actions {
+    'calculator.getTenFirstPrimes': [
+        undefined,
+        number[]
+    ];
+    'calculator.parseInt': [
+        ParseIntParams,
+        number
+    ];
+    'calculator.sum': [
+        SumParams,
+        number
+    ];
+    'manager.run': [
+        RunParams,
+        void
+    ];
+}
+
+type CallArgs<N extends keyof Actions> = Actions[N][0] extends undefined ? [
+    params?: undefined,
+    meta?: m.CallingOptions
+] : [
+    params: Actions[N][0],
+    meta?: m.CallingOptions
+];
+
+export function call<N extends keyof Actions>(ctx: m.Context, action: N, ...args: CallArgs<N>): Promise<Actions[N][1]> {
+    return ctx.call(action, args[0], args[1]);
+}
+
+export function callT<T extends string | number, N extends string = "generic.concat">(ctx: m.Context, action: N, params: N extends "generic.concat" ? ConcatParams<T> : never, meta?: m.CallingOptions): Promise<ConcatResponse<T>>;
+export function callT<T extends string | number, N extends string = "generic.everything">(ctx: m.Context, action: N, params?: undefined, meta?: m.CallingOptions): Promise<T>;
+export function callT(ctx: m.Context, action: string, params: unknown, meta?: m.CallingOptions): Promise<unknown> {
+    return ctx.call(action, params, meta);
+}
