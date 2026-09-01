@@ -42,7 +42,7 @@
     "eslint-plugin-prettier": "^5.5.6",
     "jiti": "^2.7.0",
     "moleculer": "^0.15.1",
-    "pkgroll": "^2.27.1",
+    "pkgroll": "^2.28.1",
     "prettier": "^3.9.6",
     "semantic-release": "^25.0.9",
     "typescript": "~6.0.3",
